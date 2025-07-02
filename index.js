@@ -3,7 +3,6 @@ import bodyParser from 'body-parser';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -14,52 +13,60 @@ app.use(bodyParser.json());
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
-  const txArray = Array.isArray(req.body) ? req.body : [req.body];
+  const transfer = req.body?.transaction?.events?.tokenTransfers?.[0];
+  console.log("🧾 Transfer object:", transfer);
 
-  for (const tx of txArray) {
-    const transfer = tx?.tokenTransfers?.[0];
-
-    if (!transfer) {
-      console.log("❌ No token transfer data found in one of the items.");
-      continue;
-    }
-
-    const toAddress = transfer.toUserAccount;
-    const amount = transfer.tokenAmount?.uiAmountString || "Unknown amount";
-
-    if (toAddress === 'martyburn9999999999999999999999999999999999') {
-      const message = `🔥 ${amount} $MARTY burned`;
-      console.log("📤 Sending to Telegram:", message);
-
-      const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-
-      const telegramPayload = {
-        chat_id: process.env.TELEGRAM_CHAT_ID,
-        text: message,
-      };
-
-      try {
-        const telegramRes = await fetch(telegramUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(telegramPayload),
-        });
-
-        const result = await telegramRes.json();
-        console.log("✅ Telegram response:", result);
-      } catch (error) {
-        console.error("❌ Telegram send failed:", error);
-      }
-    } else {
-      console.log("ℹ️ Skipped transfer to different address:", toAddress);
-    }
+  if (!transfer) {
+    console.log("❌ No token transfer data found.");
+    return res.status(400).json({ message: "No transfer data found" });
   }
 
-  res.status(200).json({ message: "Webhook processed" });
+  const mint = transfer.mint;
+  const toAddress = transfer.toUserAccount;
+  const tokenAmount = transfer.tokenAmount;
+  const amount = tokenAmount?.uiAmountString;
+
+  if (!amount) {
+    console.log("⚠️ tokenAmount object missing or incomplete:", tokenAmount);
+  }
+
+  if (
+    toAddress === 'martyburn9999999999999999999999999999999999'
+  ) {
+    const message = `🔥 ${amount || "Unknown"} $MARTY burned`;
+
+    console.log("📤 Sending to Telegram:", message);
+
+    const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+    const telegramPayload = {
+      chat_id: process.env.TELEGRAM_CHAT_ID,
+      text: message,
+    };
+
+    try {
+      const telegramRes = await fetch(telegramUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(telegramPayload),
+      });
+
+      const result = await telegramRes.json();
+      console.log("✅ Telegram response:", result);
+
+      res.status(200).json({ message: "Telegram message sent", result });
+    } catch (error) {
+      console.error("❌ Telegram send failed:", error);
+      res.status(500).json({ error: "Telegram send failed" });
+    }
+  } else {
+    console.log("ℹ️ Transfer ignored — not sent to burn address.");
+    res.status(200).json({ message: "Transfer not to burn address" });
+  }
 });
 
 app.get('/', (req, res) => {
-  res.send('Marty Burn Bot is running!');
+  res.send('🔥 Marty Burn Bot is online!');
 });
 
 app.listen(PORT, () => {
