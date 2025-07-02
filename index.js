@@ -3,34 +3,36 @@ import bodyParser from 'body-parser';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
-// Load environment variables from .env file
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware to parse JSON request bodies
 app.use(bodyParser.json());
 
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
-  const transfer = req.body?.transaction?.tokenTransfers?.[0];
+  const transfers = req.body?.transaction?.tokenTransfers || [];
 
-  if (!transfer) {
+  if (transfers.length === 0) {
     console.log("❌ No token transfer data found.");
     return res.status(400).json({ message: "No transfer data found" });
   }
 
-  const mint = transfer.mint;
-  const toAddress = transfer.toUserAccount;
+  const burnTransfers = transfers.filter(transfer =>
+    transfer.toUserAccount === 'martyburn9999999999999999999999999999999999'
+  );
 
-  if (
-    mint === 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump' &&
-    toAddress === 'martyburn9999999999999999999999999999999999'
-  ) {
-    const amount = transfer.tokenAmount?.uiAmountString || "Unknown amount";
-    const message = `🔥 ${amount} $MARTY burned`;
+  if (burnTransfers.length === 0) {
+    console.log("❌ No burn transfers to monitored address.");
+    return res.status(200).json({ message: "No relevant burn transfers" });
+  }
+
+  for (const transfer of burnTransfers) {
+    const amount = transfer.tokenAmount?.uiAmountString || "Unknown";
+    const symbol = transfer.tokenSymbol || "tokens";
+    const message = `🔥 ${amount} ${symbol} burned`;
 
     console.log("📤 Sending to Telegram:", message);
 
@@ -50,20 +52,16 @@ app.post('/api/index', async (req, res) => {
 
       const result = await telegramRes.json();
       console.log("✅ Telegram response:", result);
-
-      res.status(200).json({ message: "Telegram message sent", result });
     } catch (error) {
       console.error("❌ Telegram send failed:", error);
-      res.status(500).json({ error: "Telegram send failed" });
     }
-  } else {
-    console.log("ℹ️ Transfer did not match monitored conditions.");
-    res.status(200).json({ message: "Transfer ignored" });
   }
+
+  res.status(200).json({ message: "Telegram burn messages processed" });
 });
 
 app.get('/', (req, res) => {
-  res.send('Marty Burn Bot is live 🚀');
+  res.send('Marty Burn Bot is running (agnostic mode)!');
 });
 
 app.listen(PORT, () => {
