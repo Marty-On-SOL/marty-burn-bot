@@ -1,35 +1,21 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import fetch from 'node-fetch';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-app.use(bodyParser.json());
-
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
-  if (!Array.isArray(req.body)) {
-    console.log("❌ Payload is not an array.");
-    return res.status(400).json({ message: "Expected array payload from Helius" });
-  }
+  const txArray = Array.isArray(req.body) ? req.body : [req.body];
 
-  for (const item of req.body) {
-    const transfers = item.transaction?.tokenTransfers || [];
+  for (const tx of txArray) {
+    const transfer = tx?.tokenTransfers?.[0];
 
-    const burnTransfers = transfers.filter(transfer =>
-      transfer.toUserAccount === 'martyburn9999999999999999999999999999999999'
-    );
+    if (!transfer) {
+      console.log("❌ No token transfer data found in one of the items.");
+      continue;
+    }
 
-    for (const transfer of burnTransfers) {
-      const amount = transfer.tokenAmount?.uiAmountString || "Unknown";
-      const symbol = transfer.tokenSymbol || "tokens";
-      const message = `🔥 ${amount} ${symbol} burned`;
+    const toAddress = transfer.toUserAccount;
+    const amount = transfer.tokenAmount?.uiAmountString || "Unknown amount";
 
+    if (toAddress === 'martyburn9999999999999999999999999999999999') {
+      const message = `🔥 ${amount} $MARTY burned`;
       console.log("📤 Sending to Telegram:", message);
 
       const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -51,16 +37,10 @@ app.post('/api/index', async (req, res) => {
       } catch (error) {
         console.error("❌ Telegram send failed:", error);
       }
+    } else {
+      console.log("ℹ️ Skipped transfer to different address:", toAddress);
     }
   }
 
   res.status(200).json({ message: "Webhook processed" });
-});
-
-app.get('/', (req, res) => {
-  res.send('Marty Burn Bot is running!');
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
 });
