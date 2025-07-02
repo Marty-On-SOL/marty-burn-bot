@@ -14,7 +14,7 @@ app.use(bodyParser.json());
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
-  const transaction = req.body?.[0]; // Handles Helius array payload
+  const transaction = req.body?.[0];
   const transfer = transaction?.tokenTransfers?.[0];
 
   console.log("🧾 Transfer object:", transfer);
@@ -27,7 +27,13 @@ app.post('/api/index', async (req, res) => {
   console.log("🧪 Raw tokenAmount object:", transfer.tokenAmount);
 
   const toAddress = transfer.toUserAccount;
-  const amount = transfer.tokenAmount?.uiAmountString || "Unknown";
+  let amount = "Unknown";
+
+  if (typeof transfer.tokenAmount === 'number') {
+    amount = transfer.tokenAmount.toString();
+  } else if (typeof transfer.tokenAmount === 'object' && transfer.tokenAmount?.uiAmountString) {
+    amount = transfer.tokenAmount.uiAmountString;
+  }
 
   if (toAddress === 'martyburn9999999999999999999999999999999999') {
     const message = `🔥 ${amount} $MARTY burned`;
