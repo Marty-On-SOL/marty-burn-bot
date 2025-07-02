@@ -3,10 +3,13 @@ import bodyParser from 'body-parser';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
+// Load environment variables from .env file
 dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Middleware to parse JSON request bodies
 app.use(bodyParser.json());
 
 app.post('/api/index', async (req, res) => {
@@ -48,19 +51,19 @@ app.post('/api/index', async (req, res) => {
       const result = await telegramRes.json();
       console.log("✅ Telegram response:", result);
 
-      return res.status(200).json({ message: "Telegram message sent", result });
+      res.status(200).json({ message: "Telegram message sent", result });
     } catch (error) {
       console.error("❌ Telegram send failed:", error);
-      return res.status(500).json({ error: "Telegram send failed" });
+      res.status(500).json({ error: "Telegram send failed" });
     }
   } else {
-    console.log("ℹ️ Transfer did not match mint or burn address criteria.");
-    return res.status(200).json({ message: "Ignored: not a burn transfer" });
+    console.log("ℹ️ Transfer did not match monitored conditions.");
+    res.status(200).json({ message: "Transfer ignored" });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('Marty Burn Bot is running!');
+  res.send('Marty Burn Bot is live 🚀');
 });
 
 app.listen(PORT, () => {
