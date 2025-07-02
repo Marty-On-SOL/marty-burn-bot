@@ -9,8 +9,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Middleware to parse JSON request bodies
 app.use(bodyParser.json());
 
+// Route to confirm server is running
+app.get('/', (req, res) => {
+  res.send('Marty Burn Bot is live!');
+});
+
+// Webhook endpoint for Helius
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
@@ -24,6 +31,7 @@ app.post('/api/index', async (req, res) => {
   const mint = transfer.mint;
   const toAddress = transfer.toUserAccount;
 
+  // Filter for correct mint and burn wallet address
   if (
     mint === 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump' &&
     toAddress === 'martyburn9999999999999999999999999999999999'
@@ -56,15 +64,12 @@ app.post('/api/index', async (req, res) => {
       return res.status(500).json({ error: "Telegram send failed" });
     }
   } else {
-    console.log("⚠️ Ignored non-burn or wrong mint transfer.");
-    return res.status(200).json({ message: "Ignored event" });
+    console.log("ℹ️ Transfer does not match burn criteria.");
+    return res.status(200).json({ message: "Ignored non-burn transfer" });
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('Marty Burn Bot is running!');
-});
-
+// Start the server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
