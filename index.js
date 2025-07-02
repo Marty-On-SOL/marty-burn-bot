@@ -1,3 +1,16 @@
+import express from 'express';
+import bodyParser from 'body-parser';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.use(bodyParser.json());
+
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
@@ -43,4 +56,12 @@ app.post('/api/index', async (req, res) => {
   }
 
   res.status(200).json({ message: "Webhook processed" });
+});
+
+app.get('/', (req, res) => {
+  res.send('Marty Burn Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
