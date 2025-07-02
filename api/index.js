@@ -3,10 +3,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Only POST allowed' });
   }
 
-  console.log("Received POST:", req.body);
+  console.log("✅ Received POST:", req.body);
 
   const transaction = req.body.transaction;
-  console.log("Full transaction object:", transaction);
+  console.log("📦 Full transaction object:", transaction);
 
   const transfer = transaction?.events?.tokenTransfers?.[0];
   if (!transfer) {
@@ -19,10 +19,10 @@ export default async function handler(req, res) {
 
   console.log("📤 Sending Telegram message:", message);
 
-  const telegramUrl = `https://api.telegram.org/bot7903162757:AAHVGGvt8dK09xVNKkHp-d_gy-ZUbYkqQs0/sendMessage`;
+  const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
 
   const telegramPayload = {
-    chat_id: "-1002830823864",
+    chat_id: process.env.TELEGRAM_CHAT_ID,
     text: message,
   };
 
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     const result = await telegramRes.json();
     console.log("✅ Telegram API response:", result);
 
-    res.status(200).json({ message: "Telegram message sent" });
+    res.status(200).json({ message: "Telegram message sent", result });
   } catch (error) {
     console.error("❌ Telegram send error:", error);
     res.status(500).json({ error: "Failed to send Telegram message" });
