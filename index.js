@@ -1,107 +1,76 @@
 import express from 'express';
+import dotenv from 'dotenv';
 import axios from 'axios';
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-const TELEGRAM_BOT_TOKEN = '7903162757:AAHo897_j18ZR-f8GLFQU1cJVzwbAIxLmqQ';
-const TELEGRAM_CHAT_ID = '-1002830823864';
-
-const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
-const MARTY_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
+const PORT = process.env.PORT || 3000;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const MARTY_MINT = "DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump";
 
 const TOTAL_SUPPLY = 1_000_000_000;
 const TARGET_SUPPLY = 690_420_000;
 const TARGET_BURN = TOTAL_SUPPLY - TARGET_SUPPLY;
 
 let totalBurned = 0;
-const cooldowns = new Set();
 
 app.post('/webhook', async (req, res) => {
-  const payload = req.body;
-  console.log('✅ POST received:', JSON.stringify(payload, null, 2));
+  console.log("✅ POST received:", JSON.stringify(req.body, null, 2));
 
-  for (const tx of payload) {
-    const signature = tx.signature || 'N/A';
+  const event = req.body[0];
+  const transfer = event?.tokenTransfers?.find(t =>
+    t.toUserAccount === "martyburn9999999999999999999999999999999999" &&
+    t.mint === MARTY_MINT
+  );
 
-    if (!tx.tokenTransfers || !Array.isArray(tx.tokenTransfers)) continue;
+  if (!transfer || !transfer.tokenAmount) {
+    console.log("❌ No valid burn detected.");
+    return res.status(200).send("No valid burn detected.");
+  }
 
-    for (const transfer of tx.tokenTransfers) {
-      if (
-        transfer.toUserAccount !== BURN_WALLET ||
-        transfer.mint !== MARTY_MINT
-      ) {
-        console.log('❌ Not a valid $MARTY burn to burn wallet.');
-        continue;
-      }
+  const { uiAmount } = transfer.tokenAmount;
 
-      let amount = 0;
-      let decimals = 0;
-      let uiAmount = 0;
+  if (typeof uiAmount !== 'number' || isNaN(uiAmount)) {
+    console.log("❌ Burned amount is NaN. Aborting message.");
+    return res.status(400).send("Invalid amount.");
+  }
 
-      if (typeof transfer.tokenAmount === 'object') {
-        amount = parseInt(transfer.tokenAmount.amount || 0);
-        decimals = parseInt(transfer.tokenAmount.decimals || 0);
-        uiAmount = amount / Math.pow(10, decimals);
-      } else if (typeof transfer.tokenAmount === 'number') {
-        uiAmount = transfer.tokenAmount;
-      }
+  totalBurned += uiAmount;
+  const stillToBurn = TARGET_BURN - totalBurned;
 
-      if (isNaN(uiAmount) || uiAmount <= 0) {
-        console.log('❌ Burned amount is NaN. Aborting message.');
-        continue;
-      }
-
-      const sender = transfer.fromUserAccount;
-
-      if (cooldowns.has(sender)) {
-        console.log(`⏳ Cooldown active for ${sender}. Skipping.`);
-        continue;
-      }
-
-      totalBurned += uiAmount;
-      const stillToBurn = TARGET_BURN - totalBurned;
-
-      const message = `
-🔥 Another $MARTY burn launched into the abyss of space! 🔥
+  const message = `🔥 Another $MARTY burn launched into the abyss of space! 🔥
 🚀 Marty’s moon mission is right on schedule.
 
 🔥 ${uiAmount.toLocaleString()} $MARTY burned
 
 🧠 Countdown to Marty’s moon launch:
- • 🪐 Total Supply: 1,000,000,000
- • 🎯 Target Supply: 690,420,000
- • 🧨 Target Burn: 309,580,000
+ • 🪐 Total Supply: ${TOTAL_SUPPLY.toLocaleString()}
+ • 🎯 Target Supply: ${TARGET_SUPPLY.toLocaleString()}
+ • 🧨 Target Burn: ${TARGET_BURN.toLocaleString()}
  • 🔥 Burned So Far: ${totalBurned.toLocaleString()}
- • 🧮 Still to Burn: ${Math.max(stillToBurn, 0).toLocaleString()}
+ • 🧮 Still to Burn: ${stillToBurn.toLocaleString()}
 
-🔗 View on SolScan: https://solscan.io/tx/${signature}
-`;
+🔗 View on SolScan`;
 
-      try {
-        const telegramURL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`;
-        const formData = {
-          chat_id: TELEGRAM_CHAT_ID,
-          caption: message,
-          animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true',
-          parse_mode: 'Markdown'
-        };
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: message,
+      parse_mode: 'HTML',
+    });
 
-        const response = await axios.post(telegramURL, formData);
-        console.log('✅ Telegram response:', response.data);
-
-        cooldowns.add(sender);
-        setTimeout(() => cooldowns.delete(sender), 10 * 1000);
-      } catch (error) {
-        console.error('❌ Failed to send Telegram message:', error.message);
-      }
-    }
+    console.log("✅ Telegram message sent.");
+    res.status(200).send("OK");
+  } catch (error) {
+    console.error("❌ Failed to send Telegram message:", error.message);
+    res.status(500).send("Telegram error.");
   }
-
-  res.sendStatus(200);
 });
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Marty Burn Bot listening on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
