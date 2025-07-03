@@ -8,47 +8,39 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware
 app.use(bodyParser.json());
 
 app.post('/api/index', async (req, res) => {
   console.log("✅ POST received:", req.body);
 
-  const tx = req.body?.[0]; // Helius sends an array of transactions
-  if (!tx) {
-    console.log("❌ No transaction data found.");
-    return res.status(400).json({ message: "No transaction data found" });
-  }
+  const payload = Array.isArray(req.body) ? req.body[0] : req.body;
+  const transfer = payload?.tokenTransfers?.[0];
 
-  const transfer = tx.tokenTransfers?.[0];
   console.log("🧾 Transfer object:", transfer);
 
   if (!transfer) {
     console.log("❌ No token transfer data found.");
-    return res.status(400).json({ message: "No token transfer found" });
+    return res.status(400).json({ message: "No transfer data found" });
   }
 
   const toAddress = transfer.toUserAccount;
-  const tokenAmount = transfer.tokenAmount;
-  const burnAddress = "martyburn1111111111111111111111111111111111";
+  const burnAddress = 'martyburn1111111111111111111111111111111111';
 
   if (toAddress !== burnAddress) {
-    console.log("ℹ️ Not a burn transfer, ignoring.");
-    return res.status(200).json({ message: "Not a burn transaction" });
+    console.log("ℹ️ Transfer not to burn address, ignoring.");
+    return res.status(200).json({ message: "Not a burn address" });
   }
 
-  const amount =
-    typeof tokenAmount === 'object'
-      ? tokenAmount.uiAmountString || tokenAmount.amount || "Unknown"
-      : tokenAmount || "Unknown";
-
+  const rawAmount = transfer.tokenAmount?.uiAmount;
+  const amount = rawAmount ? parseInt(rawAmount) : "Unknown";
   const message = `🔥 ${amount} $MARTY burned`;
+
   console.log("📤 Sending to Telegram:", message);
 
-  const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const telegramUrl = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`;
 
   const telegramPayload = {
-    chat_id: process.env.TELEGRAM_CHAT_ID,
+    chat_id: process.env.CHAT_ID,
     text: message,
   };
 
@@ -61,6 +53,7 @@ app.post('/api/index', async (req, res) => {
 
     const result = await telegramRes.json();
     console.log("✅ Telegram response:", result);
+
     res.status(200).json({ message: "Telegram message sent", result });
   } catch (error) {
     console.error("❌ Telegram send failed:", error);
