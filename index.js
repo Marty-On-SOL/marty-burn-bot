@@ -1,103 +1,97 @@
 import express from 'express';
 import axios from 'axios';
-import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
+import dotenv from 'dotenv';
 
 dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Constants
+// Cooldown map: 60 seconds
+const cooldowns = new Map();
+const COOLDOWN_MS = 60000; // 1 minute
+
+// Token info
+const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
+const MARTY_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
 const TOTAL_SUPPLY = 1_000_000_000;
 const TARGET_SUPPLY = 690_420_000;
 const TARGET_BURN = TOTAL_SUPPLY - TARGET_SUPPLY;
-const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
-const MONITORED_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
 
-// Rate limiting
-const cooldowns = new Map();
-const COOLDOWN_DURATION = 15 * 1000;
-
-// Message formatting helper
-function generateMessage(burnAmount, totalBurned) {
-  const remainingToBurn = TARGET_BURN - totalBurned;
-  const fireEmojiCount = Math.min(10, Math.max(1, Math.floor(burnAmount / 100)));
-
-  const fireLine = `${'🔥'.repeat(fireEmojiCount)} Another $MARTY burn just vaporized into the void ${'🔥'.repeat(fireEmojiCount)}`;
-  const statusLine = `🚀 The mission to the moon is full throttle.\n`;
-  const amountLine = `🔥 ${burnAmount.toLocaleString()} $MARTY incinerated\n`;
-
-  const intelBlock = `🧠 Mission Intel:
- • 🪐 Total Supply: ${TOTAL_SUPPLY.toLocaleString()}
- • 🎯 Target Supply: ${TARGET_SUPPLY.toLocaleString()}
- • 💥 Total Burn Target: ${TARGET_BURN.toLocaleString()}
- • 🔥 Burned So Far: ${totalBurned.toLocaleString()}
- • 🧮 Remaining to Burn: ${remainingToBurn.toLocaleString()}`;
-
-  const footer = `\n🔗 View on SolScan`;
-
-  return `${fireLine}\n${statusLine}\n${amountLine}\n${intelBlock}${footer}`;
-}
-
-// Store burned total
-let burnedTotal = 0;
-
-// Middleware
 app.use(bodyParser.json());
 
-// Webhook handler
 app.post('/webhook', async (req, res) => {
   console.log('✅ POST received:', JSON.stringify(req.body, null, 2));
 
-  const burnEvent = req.body[0];
-  const transfer = burnEvent.tokenTransfers?.[0];
+  const events = req.body;
 
-  if (!transfer) {
-    console.log('❌ No valid token transfer found.');
-    return res.sendStatus(400);
+  for (const event of events) {
+    if (event.type !== 'TRANSFER' || !event.tokenTransfers) continue;
+
+    for (const transfer of event.tokenTransfers) {
+      const { fromUserAccount, toUserAccount, tokenAmount, mint } = transfer;
+
+      if (
+        toUserAccount === BURN_WALLET &&
+        mint === MARTY_MINT &&
+        tokenAmount &&
+        tokenAmount.uiAmount
+      ) {
+        const sender = fromUserAccount;
+        const now = Date.now();
+
+        if (cooldowns.has(sender) && now - cooldowns.get(sender) < COOLDOWN_MS) {
+          console.log('⏳ Cooldown active for sender:', sender);
+          continue;
+        }
+
+        cooldowns.set(sender, now);
+
+        const amountBurned = tokenAmount.uiAmount;
+        const burnedSoFar = amountBurned;
+        const stillToBurn = TARGET_BURN - burnedSoFar;
+
+        let fireCount = 1;
+        if (amountBurned >= 1000) fireCount = 5;
+        else if (amountBurned >= 500) fireCount = 4;
+        else if (amountBurned >= 100) fireCount = 3;
+        else if (amountBurned >= 50) fireCount = 2;
+
+        const fireEmoji = '🔥'.repeat(fireCount);
+
+        const message = `${fireEmoji}  Another $MARTY burn sent to the abyss of space!  ${fireEmoji}
+
+🚀 Marty’s moon mission is right on schedule.
+
+🔥 ${amountBurned.toLocaleString()} $MARTY burned
+
+🧠 Countdown to Marty’s moon launch:
+ • 🪐 Total Supply: ${TOTAL_SUPPLY.toLocaleString()}
+ • 🎯 Target Supply: ${TARGET_SUPPLY.toLocaleString()}
+ • 🧨 Target Burn: ${TARGET_BURN.toLocaleString()}
+ • 🔥 Burned So Far: ${amountBurned.toLocaleString()}
+ • 🧮 Still to Burn: ${stillToBurn.toLocaleString()}
+
+🔗 View on SolScan`;
+
+        try {
+          await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            chat_id: process.env.TELEGRAM_CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+          });
+          console.log('✅ Telegram message sent.');
+        } catch (error) {
+          console.error('❌ Failed to send Telegram message:', error.message);
+        }
+      }
+    }
   }
 
-  if (
-    transfer.toUserAccount !== BURN_WALLET ||
-    transfer.mint !== MONITORED_MINT
-  ) {
-    console.log('❌ Not a valid $MARTY burn to burn wallet.');
-    return res.sendStatus(200);
-  }
-
-  const amount = transfer.tokenAmount?.uiAmount;
-  if (typeof amount !== 'number' || isNaN(amount)) {
-    console.log('❌ Burned amount is NaN. Aborting message.');
-    return res.sendStatus(200);
-  }
-
-  burnedTotal += amount;
-
-  // Rate limit per IP
-  const ip = req.ip;
-  const now = Date.now();
-  if (cooldowns.has(ip) && now - cooldowns.get(ip) < COOLDOWN_DURATION) {
-    console.log(`⏳ Cooldown in effect for ${ip}`);
-    return res.sendStatus(200);
-  }
-  cooldowns.set(ip, now);
-
-  const message = generateMessage(amount, burnedTotal);
-
-  try {
-    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      chat_id: process.env.TELEGRAM_CHAT_ID,
-      text: message,
-      parse_mode: 'Markdown'
-    });
-    console.log('✅ Telegram message sent!');
-  } catch (err) {
-    console.error('❌ Failed to send Telegram message:', err.message);
-  }
-
-  res.sendStatus(200);
+  res.send('OK');
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Marty burn bot listening on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
