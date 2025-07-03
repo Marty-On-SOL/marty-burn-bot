@@ -1,102 +1,107 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import axios from 'axios';
 
-dotenv.config();
-
 const app = express();
-const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const BURN_ADDRESS = 'martyburn9999999999999999999999999999999999';
+const TELEGRAM_BOT_TOKEN = '7903162757:AAHo897_j18ZR-f8GLFQU1cJVzwbAIxLmqQ';
+const TELEGRAM_CHAT_ID = '-1002830823864';
+
+const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
 const MARTY_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
+
 const TOTAL_SUPPLY = 1_000_000_000;
 const TARGET_SUPPLY = 690_420_000;
 const TARGET_BURN = TOTAL_SUPPLY - TARGET_SUPPLY;
 
 let totalBurned = 0;
-const cooldownWallets = new Map();
+const cooldowns = new Set();
 
-app.post('/api/index', async (req, res) => {
-  console.log('✅ POST received:', JSON.stringify(req.body, null, 2));
+app.post('/webhook', async (req, res) => {
+  const payload = req.body;
+  console.log('✅ POST received:', JSON.stringify(payload, null, 2));
 
-  const data = req.body;
-  const event = Array.isArray(data) ? data[0] : data;
+  for (const tx of payload) {
+    const signature = tx.signature || 'N/A';
 
-  const transfer = event.tokenTransfers?.find(t =>
-    t.toUserAccount === BURN_ADDRESS &&
-    t.mint === MARTY_MINT
-  );
+    if (!tx.tokenTransfers || !Array.isArray(tx.tokenTransfers)) continue;
 
-  if (!transfer) {
-    console.log('❌ Not a valid $MARTY burn to burn wallet.');
-    return res.sendStatus(200);
-  }
+    for (const transfer of tx.tokenTransfers) {
+      if (
+        transfer.toUserAccount !== BURN_WALLET ||
+        transfer.mint !== MARTY_MINT
+      ) {
+        console.log('❌ Not a valid $MARTY burn to burn wallet.');
+        continue;
+      }
 
-  const sender = transfer.fromUserAccount;
+      let amount = 0;
+      let decimals = 0;
+      let uiAmount = 0;
 
-  // Rate limiting
-  if (cooldownWallets.has(sender)) {
-    const cooldownUntil = cooldownWallets.get(sender);
-    if (Date.now() < cooldownUntil) {
-      console.log(`⏳ Sender ${sender} is on cooldown.`);
-      return res.sendStatus(200);
+      if (typeof transfer.tokenAmount === 'object') {
+        amount = parseInt(transfer.tokenAmount.amount || 0);
+        decimals = parseInt(transfer.tokenAmount.decimals || 0);
+        uiAmount = amount / Math.pow(10, decimals);
+      } else if (typeof transfer.tokenAmount === 'number') {
+        uiAmount = transfer.tokenAmount;
+      }
+
+      if (isNaN(uiAmount) || uiAmount <= 0) {
+        console.log('❌ Burned amount is NaN. Aborting message.');
+        continue;
+      }
+
+      const sender = transfer.fromUserAccount;
+
+      if (cooldowns.has(sender)) {
+        console.log(`⏳ Cooldown active for ${sender}. Skipping.`);
+        continue;
+      }
+
+      totalBurned += uiAmount;
+      const stillToBurn = TARGET_BURN - totalBurned;
+
+      const message = `
+🔥 Another $MARTY burn launched into the abyss of space! 🔥
+🚀 Marty’s moon mission is right on schedule.
+
+🔥 ${uiAmount.toLocaleString()} $MARTY burned
+
+🧠 Countdown to Marty’s moon launch:
+ • 🪐 Total Supply: 1,000,000,000
+ • 🎯 Target Supply: 690,420,000
+ • 🧨 Target Burn: 309,580,000
+ • 🔥 Burned So Far: ${totalBurned.toLocaleString()}
+ • 🧮 Still to Burn: ${Math.max(stillToBurn, 0).toLocaleString()}
+
+🔗 View on SolScan: https://solscan.io/tx/${signature}
+`;
+
+      try {
+        const telegramURL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`;
+        const formData = {
+          chat_id: TELEGRAM_CHAT_ID,
+          caption: message,
+          animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true',
+          parse_mode: 'Markdown'
+        };
+
+        const response = await axios.post(telegramURL, formData);
+        console.log('✅ Telegram response:', response.data);
+
+        cooldowns.add(sender);
+        setTimeout(() => cooldowns.delete(sender), 10 * 1000);
+      } catch (error) {
+        console.error('❌ Failed to send Telegram message:', error.message);
+      }
     }
   }
 
-  cooldownWallets.set(sender, Date.now() + 30000); // 30 seconds cooldown
-
-  // Parse burned amount safely
-  const rawAmount = transfer.tokenAmount?.uiAmount ?? transfer.tokenAmount?.amount;
-  const decimals = transfer.tokenAmount?.decimals ?? 6;
-  const burnedAmount = Number(rawAmount) / Math.pow(10, decimals);
-  if (isNaN(burnedAmount)) {
-    console.log('❌ Burned amount is NaN. Aborting message.');
-    return res.sendStatus(200);
-  }
-
-  totalBurned += burnedAmount;
-  const remainingToBurn = TARGET_BURN - totalBurned;
-
-  // Format with commas
-  const format = num => num.toLocaleString('en-US');
-
-  const message = 
-`🔥 Another $MARTY burn launched into the abyss of space! 🔥
-🚀 Marty’s moon mission is right on schedule.
-
-🔥 ${format(burnedAmount)} $MARTY burned
-
-🧠 Countdown to Marty’s moon launch:
- • 🪐 Total Supply: ${format(TOTAL_SUPPLY)}
- • 🎯 Target Supply: ${format(TARGET_SUPPLY)}
- • 🧨 Target Burn: ${format(TARGET_BURN)}
- • 🔥 Burned So Far: ${format(totalBurned)}
- • 🧮 Still to Burn: ${format(Math.max(remainingToBurn, 0))}
-
-🔗 View on SolScan`;
-
-  try {
-    const telegramURL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`;
-    const gifUrl = 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true';
-
-    const response = await axios.post(telegramURL, {
-      chat_id: TELEGRAM_CHAT_ID,
-      animation: gifUrl,
-      caption: message,
-      parse_mode: 'HTML'
-    });
-
-    console.log('✅ Telegram response:', response.data);
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('❌ Telegram error:', error.response?.data || error.message);
-    res.sendStatus(500);
-  }
+  res.sendStatus(200);
 });
 
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
+  console.log(`🚀 Marty Burn Bot listening on port ${PORT}`);
 });
