@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -10,11 +11,16 @@ const PORT = process.env.PORT || 10000;
 
 app.use(bodyParser.json());
 
-app.post('/api/index', async (req, res) => {
-  console.log("✅ POST received:", JSON.stringify(req.body, null, 2));
+// Burn address currently being tracked
+const BURN_ADDRESS = 'martyburn9999999999999999999999999999999999';
 
-  const payload = Array.isArray(req.body) ? req.body[0] : req.body;
-  const transfer = payload?.tokenTransfers?.[0];
+app.post('/api/index', async (req, res) => {
+  console.log("✅ POST received:", req.body);
+
+  const body = req.body;
+
+  // Try to extract transfer from tokenTransfers array
+  const transfer = body?.[0]?.tokenTransfers?.[0];
 
   console.log("🧾 Transfer object:", transfer);
 
@@ -24,18 +30,25 @@ app.post('/api/index', async (req, res) => {
   }
 
   const toAddress = transfer.toUserAccount;
-  const amount = transfer.tokenAmount?.uiAmountString ?? "Unknown";
+  const tokenAmount = transfer.tokenAmount;
+  const amount =
+    tokenAmount?.uiAmountString ||
+    tokenAmount?.uiAmount ||
+    tokenAmount ||
+    "Unknown";
 
-  if (toAddress === 'martyburn9999999999999999999999999999999999') {
+  // Check if transfer was to the burn address
+  if (toAddress === BURN_ADDRESS) {
     const message = `🔥 ${amount} $MARTY burned`;
+
     console.log("📤 Sending to Telegram:", message);
 
     const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`;
 
     const telegramPayload = {
       chat_id: process.env.TELEGRAM_CHAT_ID,
+      animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true',
       caption: message,
-      animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true'
     };
 
     try {
@@ -47,15 +60,14 @@ app.post('/api/index', async (req, res) => {
 
       const result = await telegramRes.json();
       console.log("✅ Telegram response:", result);
-      return res.json({ message: "Telegram message sent", result });
     } catch (error) {
-      console.error("❌ Telegram send error:", error);
-      return res.status(500).json({ message: "Telegram send failed", error });
+      console.error("❌ Failed to send Telegram message:", error);
     }
   } else {
-    console.log("⚠️ Transfer not to burn address. Ignored.");
-    return res.status(200).json({ message: "Not a burn transfer" });
+    console.log("ℹ️ Not a burn transfer.");
   }
+
+  res.status(200).json({ message: 'Webhook processed' });
 });
 
 app.listen(PORT, () => {
