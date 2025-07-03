@@ -1,82 +1,101 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import axios from 'axios';
+import dotenv from 'dotenv';
+import bodyParser from 'body-parser';
 
 dotenv.config();
-
 const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const MARTY_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
+
+// Constants
 const TOTAL_SUPPLY = 1_000_000_000;
 const TARGET_SUPPLY = 690_420_000;
 const TARGET_BURN = TOTAL_SUPPLY - TARGET_SUPPLY;
+const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
+const MONITORED_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
 
-let totalBurned = 0;
+// Rate limiting
 const cooldowns = new Map();
-const COOLDOWN_MS = 60 * 1000; // 1 minute cooldown per wallet
+const COOLDOWN_DURATION = 15 * 1000;
 
-app.post('/webhook', async (req, res) => {
-  const data = req.body;
-  console.log('✅ POST received:', JSON.stringify(data, null, 2));
+// Message formatting helper
+function generateMessage(burnAmount, totalBurned) {
+  const remainingToBurn = TARGET_BURN - totalBurned;
+  const fireEmojiCount = Math.min(10, Math.max(1, Math.floor(burnAmount / 100)));
 
-  const tx = data[0];
-  const transfer = tx?.tokenTransfers?.[0];
+  const fireLine = `${'🔥'.repeat(fireEmojiCount)} Another $MARTY burn just vaporized into the void ${'🔥'.repeat(fireEmojiCount)}`;
+  const statusLine = `🚀 The mission to the moon is full throttle.\n`;
+  const amountLine = `🔥 ${burnAmount.toLocaleString()} $MARTY incinerated\n`;
 
-  if (!transfer || transfer.mint !== MARTY_MINT || transfer.toUserAccount !== 'martyburn9999999999999999999999999999999999') {
-    console.log('❌ Not a valid burn transfer.');
-    return res.status(400).send('Invalid transfer');
-  }
-
-  const userKey = transfer.fromUserAccount;
-  const now = Date.now();
-  if (cooldowns.has(userKey) && now - cooldowns.get(userKey) < COOLDOWN_MS) {
-    console.log(`⛔ Rate limit: ${userKey} is on cooldown`);
-    return res.status(429).send('Too many requests');
-  }
-  cooldowns.set(userKey, now);
-
-  const amountBurned = transfer.tokenAmount.uiAmount;
-  if (!amountBurned || isNaN(amountBurned)) {
-    console.log('❌ Burned amount is NaN. Aborting message.');
-    return res.status(400).send('Invalid burn amount');
-  }
-
-  totalBurned += amountBurned;
-  const tokensRemaining = TARGET_BURN - totalBurned;
-
-  const finalMessage = `🔥 Another $MARTY burn launched into the abyss of space! 🔥
-🚀 Marty’s moon mission is right on schedule.
-
-🔥 ${amountBurned.toLocaleString()} $MARTY burned
-
-🧠 Countdown to Marty’s moon launch:
- • 🪐 Total Supply: 1,000,000,000
- • 🎯 Target Supply: 690,420,000
- • 🧨 Target Burn: 309,580,000
+  const intelBlock = `🧠 Mission Intel:
+ • 🪐 Total Supply: ${TOTAL_SUPPLY.toLocaleString()}
+ • 🎯 Target Supply: ${TARGET_SUPPLY.toLocaleString()}
+ • 💥 Total Burn Target: ${TARGET_BURN.toLocaleString()}
  • 🔥 Burned So Far: ${totalBurned.toLocaleString()}
- • 🧮 Still to Burn: ${tokensRemaining.toLocaleString()}
+ • 🧮 Remaining to Burn: ${remainingToBurn.toLocaleString()}`;
 
-🔗 View on SolScan`;
+  const footer = `\n🔗 View on SolScan`;
 
-  const gifFileId = 'CgACAgQAAyEGAASouvG4AAIGo2hmEUs74VNB1U2OKlfZyVXYiyqoAAKmCAACySc0U9rMgpzy5P5KNgQ';
+  return `${fireLine}\n${statusLine}\n${amountLine}\n${intelBlock}${footer}`;
+}
+
+// Store burned total
+let burnedTotal = 0;
+
+// Middleware
+app.use(bodyParser.json());
+
+// Webhook handler
+app.post('/webhook', async (req, res) => {
+  console.log('✅ POST received:', JSON.stringify(req.body, null, 2));
+
+  const burnEvent = req.body[0];
+  const transfer = burnEvent.tokenTransfers?.[0];
+
+  if (!transfer) {
+    console.log('❌ No valid token transfer found.');
+    return res.sendStatus(400);
+  }
+
+  if (
+    transfer.toUserAccount !== BURN_WALLET ||
+    transfer.mint !== MONITORED_MINT
+  ) {
+    console.log('❌ Not a valid $MARTY burn to burn wallet.');
+    return res.sendStatus(200);
+  }
+
+  const amount = transfer.tokenAmount?.uiAmount;
+  if (typeof amount !== 'number' || isNaN(amount)) {
+    console.log('❌ Burned amount is NaN. Aborting message.');
+    return res.sendStatus(200);
+  }
+
+  burnedTotal += amount;
+
+  // Rate limit per IP
+  const ip = req.ip;
+  const now = Date.now();
+  if (cooldowns.has(ip) && now - cooldowns.get(ip) < COOLDOWN_DURATION) {
+    console.log(`⏳ Cooldown in effect for ${ip}`);
+    return res.sendStatus(200);
+  }
+  cooldowns.set(ip, now);
+
+  const message = generateMessage(amount, burnedTotal);
 
   try {
-    const tgRes = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendAnimation`, {
-      chat_id: CHAT_ID,
-      animation: gifFileId,
-      caption: finalMessage,
+    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: process.env.TELEGRAM_CHAT_ID,
+      text: message,
       parse_mode: 'Markdown'
     });
-    console.log('✅ Telegram response:', tgRes.data);
-    res.status(200).send('Message sent!');
+    console.log('✅ Telegram message sent!');
   } catch (err) {
     console.error('❌ Failed to send Telegram message:', err.message);
-    res.status(500).send('Telegram error');
   }
+
+  res.sendStatus(200);
 });
 
 app.listen(PORT, () => {
