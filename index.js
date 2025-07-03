@@ -1,68 +1,84 @@
 import express from 'express';
 import bodyParser from 'body-parser';
-import fetch from 'node-fetch';
+import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
+
+// === CONFIGURATION ===
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TARGET_BURN_ADDRESS = 'martyburn9999999999999999999999999999999999';
+const MARTY_MINT_ADDRESS = 'PASTE_YOUR_REAL_MARTY_MINT_HERE';
+const LAUNCH_TARGET = 690420000;
 
 app.use(bodyParser.json());
 
-const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
-const MARTY_MINT = 'YOUR_MARTY_MINT_HERE'; // Replace with real mint when available
-const TARGET_SUPPLY = 690420000;
-
 app.post('/api/index', async (req, res) => {
-  console.log("✅ POST received:", JSON.stringify(req.body, null, 2));
+  console.log('✅ POST received:', JSON.stringify(req.body, null, 2));
 
-  const transfer = req.body?.[0]?.tokenTransfers?.[0];
-  const signature = req.body?.[0]?.signature;
+  const tx = req.body[0];
+  const transfer = tx?.tokenTransfers?.[0];
+  const signature = tx?.signature || 'Unknown Signature';
 
-  console.log("🧾 Transfer object:", transfer);
-
-  if (!transfer || transfer.toUserAccount !== BURN_WALLET || transfer.mint !== MARTY_MINT) {
-    console.log("❌ Not a valid $MARTY burn to burn wallet.");
-    return res.status(200).json({ message: "Ignored non-burn transfer" });
+  if (!transfer) {
+    console.log('❌ No token transfer data found.');
+    return res.sendStatus(200);
   }
 
-  const amount = transfer.tokenAmount?.uiAmountString || "Unknown";
+  console.log('🧾 Transfer object:', transfer);
+
+  const {
+    fromUserAccount,
+    toUserAccount,
+    tokenAmount,
+    mint
+  } = transfer;
+
+  if (
+    toUserAccount !== TARGET_BURN_ADDRESS ||
+    mint !== MARTY_MINT_ADDRESS
+  ) {
+    console.log('❌ Not a valid $MARTY burn to burn wallet.');
+    return res.sendStatus(200);
+  }
+
+  const amountBurned = parseFloat(tokenAmount.uiAmount);
+  const remainingSupply = Math.max(LAUNCH_TARGET - amountBurned, 0).toLocaleString();
+
   const txLink = `https://solscan.io/tx/${signature}`;
-  const burnedAmount = parseFloat(transfer.tokenAmount?.uiAmount || 0);
-  const countdown = Math.max(0, TARGET_SUPPLY - burnedAmount);
 
-  const message = `Another $MARTY burn sent to the abyss of space itself! 🔥🔥🔥\n` +
-                  `Marty’s moon launch is right on schedule! 🚀\n\n` +
-                  `🔥 ${amount} $MARTY burned\n` +
-                  `🚀 ${countdown.toLocaleString()} tokens left until lift-off at ${TARGET_SUPPLY.toLocaleString()}!\n\n` +
-                  `🌐 [View TX on Solscan](${txLink})`;
+  const caption = 
+`🚀 Another Marty burn sent to the abyss of space itself! 🔥🔥🔥
 
-  const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`;
+🛰️ Marty’s moon launch is right on schedule!
 
-  const telegramPayload = {
-    chat_id: process.env.TELEGRAM_CHAT_ID,
-    animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true',
-    caption: message,
-    parse_mode: "Markdown"
-  };
+🔥 ${amountBurned} $MARTY burned  
+🚀 Countdown to launch: ${remainingSupply} tokens left
+
+🔗 [View on SolScan](${txLink})`;
 
   try {
-    const telegramRes = await fetch(telegramUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(telegramPayload),
+    const gifUrl = 'https://github.com/Marty-On-SOL/marty-burn-bot/raw/main/marty%20blastoff%201080%20x%201080%20gif.gif';
+
+    const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      animation: gifUrl,
+      caption,
+      parse_mode: 'Markdown'
     });
 
-    const result = await telegramRes.json();
-    console.log("✅ Telegram response:", result);
-    res.status(200).json({ message: "Telegram notification sent", result });
-  } catch (error) {
-    console.error("❌ Failed to send Telegram message:", error);
-    res.status(500).json({ message: "Telegram send failed" });
+    console.log('✅ Telegram response:', response.data);
+  } catch (err) {
+    console.error('❌ Telegram error:', err?.response?.data || err.message);
   }
+
+  res.sendStatus(200);
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
