@@ -2,15 +2,11 @@ import express from 'express';
 import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import FormData from 'form-data';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -81,25 +77,19 @@ app.post('/webhook', async (req, res) => {
 
         try {
           const form = new FormData();
+          const gifPath = path.resolve('public', 'marty-blastoff.gif');
+
           form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
           form.append('caption', message);
           form.append('parse_mode', 'Markdown');
-          form.append(
-            'animation',
-            fs.createReadStream(join(__dirname, 'public', 'marty-blastoff.gif')),
-            {
-              filename: 'marty-blastoff.gif',
-              contentType: 'image/gif'
-            }
-          );
+          form.append('animation', fs.createReadStream(gifPath), {
+            filename: 'marty-blastoff.gif',
+            contentType: 'image/gif'
+          });
 
-          await axios.post(
-            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`,
-            form,
-            {
-              headers: form.getHeaders()
-            }
-          );
+          await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`, form, {
+            headers: form.getHeaders()
+          });
 
           console.log('✅ Telegram GIF with caption sent.');
         } catch (error) {
