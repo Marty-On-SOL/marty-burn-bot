@@ -3,10 +3,14 @@ import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import path from 'path';
 import FormData from 'form-data';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -82,7 +86,7 @@ app.post('/webhook', async (req, res) => {
           form.append('parse_mode', 'Markdown');
           form.append(
             'animation',
-            fs.createReadStream(path.join(__dirname, 'public', 'marty-blastoff.gif')),
+            fs.createReadStream(join(__dirname, 'public', 'marty-blastoff.gif')),
             {
               filename: 'marty-blastoff.gif',
               contentType: 'image/gif'
