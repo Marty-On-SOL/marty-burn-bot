@@ -3,7 +3,6 @@ import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import path from 'path';
 import FormData from 'form-data';
 
 dotenv.config();
@@ -77,12 +76,10 @@ app.post('/webhook', async (req, res) => {
 
         try {
           const form = new FormData();
-          const gifPath = path.join(__dirname, 'public', 'marty-blastoff.gif');
-
           form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
           form.append('caption', message);
           form.append('parse_mode', 'Markdown');
-          form.append('animation', fs.createReadStream(gifPath), {
+          form.append('animation', fs.createReadStream('./public/marty-blastoff.gif'), {
             filename: 'marty-blastoff.gif',
             contentType: 'image/gif'
           });
