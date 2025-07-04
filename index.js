@@ -73,15 +73,14 @@ app.post('/webhook', async (req, res) => {
 🔗 View on SolScan`;
 
         try {
-          // ✅ TEMP TEST: Known working autoplay GIF from Giphy
           await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`, {
             chat_id: process.env.TELEGRAM_CHAT_ID,
-            animation: 'https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif',
+            animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/public/marty-blastoff.gif?raw=true',
             caption: message,
             parse_mode: 'Markdown'
           });
 
-          console.log('✅ GIF and message sent.');
+          console.log('✅ GIF with caption sent via URL.');
         } catch (error) {
           console.error('❌ Telegram error:', error.response?.data || error.message);
         }
