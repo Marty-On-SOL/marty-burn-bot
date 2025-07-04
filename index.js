@@ -2,19 +2,14 @@ import express from 'express';
 import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
+import FormData from 'form-data';
+import path from 'path';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Enable static file serving from /public
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-app.use('/public', express.static(path.join(__dirname, 'public')));
 
 const cooldowns = new Map();
 const COOLDOWN_MS = 60000;
@@ -81,21 +76,19 @@ app.post('/webhook', async (req, res) => {
 🔗 View on SolScan`;
 
         try {
-          // Send local GIF
-          const gifPath = path.join(__dirname, 'public', 'marty-blastoff.gif');
-          const gifStream = fs.createReadStream(gifPath);
+          const gifPath = path.join('public', 'marty-blastoff.gif');
+          const form = new FormData();
+          form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
+          form.append('caption', `🔥 ${amountBurned.toLocaleString()} $MARTY just burned!`);
+          form.append('parse_mode', 'Markdown');
+          form.append('animation', fs.createReadStream(gifPath));
 
-          const formData = new FormData();
-          formData.append('chat_id', process.env.TELEGRAM_CHAT_ID);
-          formData.append('animation', gifStream, 'marty-blastoff.gif');
-          formData.append('caption', `🔥 ${amountBurned.toLocaleString()} $MARTY just burned!`);
-          formData.append('parse_mode', 'Markdown');
+          await axios.post(
+            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`,
+            form,
+            { headers: form.getHeaders() }
+          );
 
-          await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`, formData, {
-            headers: formData.getHeaders()
-          });
-
-          // Send the follow-up message
           await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
             chat_id: process.env.TELEGRAM_CHAT_ID,
             text: message,
