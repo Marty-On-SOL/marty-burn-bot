@@ -79,8 +79,10 @@ app.post('/webhook', async (req, res) => {
           form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
           form.append('caption', message);
           form.append('parse_mode', 'Markdown');
-          form.append('animation', fs.createReadStream('./public/marty-blastoff.gif'));
-
+          form.append('animation', fs.createReadStream('./public/marty-blastoff.gif'), {
+  filename: 'marty-blastoff.gif',
+  contentType: 'image/gif'
+});
           await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`, form, {
             headers: form.getHeaders(),
           });
