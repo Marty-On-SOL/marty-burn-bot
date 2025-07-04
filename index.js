@@ -2,8 +2,6 @@ import express from 'express';
 import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import FormData from 'form-data';
 import path from 'path';
 
 dotenv.config();
@@ -27,9 +25,9 @@ app.post('/webhook', async (req, res) => {
   const events = req.body;
 
   for (const event of events) {
-    // ✅ Support both formats: test (event.tokenTransfers) and live (event.tokenTransfers at root)
-    const tokenTransfers = event.tokenTransfers || events.tokenTransfers;
-    if (!tokenTransfers) continue;
+    // Clean support for both formats
+    if (!event.tokenTransfers || !Array.isArray(event.tokenTransfers)) continue;
+    const tokenTransfers = event.tokenTransfers;
 
     for (const transfer of tokenTransfers) {
       const { fromUserAccount, toUserAccount, tokenAmount, mint } = transfer;
@@ -37,8 +35,7 @@ app.post('/webhook', async (req, res) => {
       if (
         toUserAccount === BURN_WALLET &&
         mint === MARTY_MINT &&
-        tokenAmount &&
-        (tokenAmount.uiAmount || tokenAmount.tokenAmount)
+        tokenAmount
       ) {
         const sender = fromUserAccount;
         const now = Date.now();
@@ -50,7 +47,8 @@ app.post('/webhook', async (req, res) => {
 
         cooldowns.set(sender, now);
 
-        const amountBurned = tokenAmount.uiAmount || Number(tokenAmount.tokenAmount) / 1e6;
+        const rawAmount = tokenAmount.uiAmount || tokenAmount.amount || tokenAmount.tokenAmount || tokenAmount;
+        const amountBurned = typeof rawAmount === 'number' ? rawAmount : Number(rawAmount) / 1e6;
         const burnedSoFar = amountBurned;
         const stillToBurn = TARGET_BURN - burnedSoFar;
 
@@ -78,26 +76,17 @@ app.post('/webhook', async (req, res) => {
 🔗 View on SolScan`;
 
         try {
-          const form = new FormData();
-          form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
-          form.append('caption', message);
-          form.append('parse_mode', 'Markdown');
-          form.append(
-            'animation',
-            fs.createReadStream(path.join('public', 'marty-blastoff.gif')),
+          await axios.post(
+            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`,
             {
-              filename: 'marty-blastoff.gif',
-              contentType: 'image/gif',
+              chat_id: process.env.TELEGRAM_CHAT_ID,
+              animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/public/marty-blastoff.gif?raw=true',
+              caption: message,
+              parse_mode: 'Markdown',
             }
           );
 
-          await axios.post(
-            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`,
-            form,
-            { headers: form.getHeaders() }
-          );
-
-          console.log('✅ Telegram GIF with caption sent.');
+          console.log('✅ Telegram GIF via URL sent.');
         } catch (error) {
           console.error('❌ Telegram error:', error.response?.data || error.message);
         }
