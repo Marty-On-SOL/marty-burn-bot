@@ -8,11 +8,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Cooldown map: 60 seconds
 const cooldowns = new Map();
-const COOLDOWN_MS = 60000; // 1 minute
+const COOLDOWN_MS = 60000;
 
-// Token info
 const BURN_WALLET = 'martyburn9999999999999999999999999999999999';
 const MARTY_MINT = 'DMNHzC6fprxUcAKM8rEDqVPtTJPYMML3ysPw9yLmpump';
 const TOTAL_SUPPLY = 1_000_000_000;
@@ -23,7 +21,6 @@ app.use(bodyParser.json());
 
 app.post('/webhook', async (req, res) => {
   console.log('✅ POST received:', JSON.stringify(req.body, null, 2));
-
   const events = req.body;
 
   for (const event of events) {
@@ -76,14 +73,24 @@ app.post('/webhook', async (req, res) => {
 🔗 View on SolScan`;
 
         try {
+          // 1. Send your actual GIF from GitHub
+          await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendAnimation`, {
+            chat_id: process.env.TELEGRAM_CHAT_ID,
+            animation: 'https://github.com/Marty-On-SOL/marty-burn-bot/blob/main/marty%20blastoff%201080%20x%201080%20gif.gif?raw=true',
+            caption: `🔥 ${amountBurned.toLocaleString()} $MARTY just burned!`,
+            parse_mode: 'Markdown'
+          });
+
+          // 2. Send the full message
           await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
             chat_id: process.env.TELEGRAM_CHAT_ID,
             text: message,
             parse_mode: 'Markdown'
           });
-          console.log('✅ Telegram message sent.');
+
+          console.log('✅ GIF and message sent.');
         } catch (error) {
-          console.error('❌ Failed to send Telegram message:', error.message);
+          console.error('❌ Telegram error:', error.response?.data || error.message);
         }
       }
     }
